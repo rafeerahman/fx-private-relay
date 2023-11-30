@@ -444,6 +444,15 @@ jobs:
                   set -x
                   PROD_TAG=$(curl --silent https://relay.firefox.com/__version__ | jq -r ".version")
                   echo "export PROD_TAG=$(printf '%q' "${PROD_TAG}")" >> $BASH_ENV
+      - when:
+          condition:
+            and:
+              - << parameters.production_with_new_migrations >>
+              - equal: [ "python", << parameters.executor >> ]
+          steps:
+            - run:
+                name: Install sqlite3
+                command: sudo apt-get update && sudo apt-get install -y sqlite3
       # Section 2: Setup bash function "the_command", others
       - when:
           condition:
@@ -503,6 +512,13 @@ jobs:
                     IQ_ENABLED=0
                   fi
 
+                  if [ "<<# parameters.production_with_new_migrations >>production_with_new_migrations<</ parameters.production_with_new_migrations >>" == "production_with_new_migrations" ]
+                  then
+                    PYTEST_MIGRATIONS_MODE=1
+                  else
+                    PYTEST_MIGRATIONS_MODE=0
+                  fi
+
                   if [ "<<# parameters.pytest_fail_fast >>pytest_fail_fast<</ parameters.pytest_fail_fast >>" == "pytest_fail_fast" ]
                   then
                     PYTEST_FAIL_FAST=1
@@ -510,7 +526,7 @@ jobs:
                     PYTEST_FAIL_FAST=0
                   fi
 
-                  the_command() {
+                  pytest_command() {
                     # set -x  # Uncomment to debug
 
                     # Put the settings into .env
@@ -523,6 +539,15 @@ jobs:
                       PYTEST_ARGS+=("--maxfail=3")
                     fi
 
+                    if [ $PYTEST_MIGRATIONS_MODE -eq 1 ]
+                    then
+                      PYTEST_ARGS+=("--reuse-db")
+                      if [ "<< parameters.executor >>" == "python" ]
+                      then
+                        echo 'TEST_DB_NAME="test.sqlite3"' >> .env
+                      fi
+                    fi
+
                     if [ "<< parameters.test_results_filename >>" != "" ] && [ "$1" != "--skip-results" ]
                     then
                       PYTEST_ARGS+=('--junit-xml=job-results/<< parameters.test_results_filename >>')
@@ -532,6 +557,33 @@ jobs:
                     echo "PHONES_ENABLED=${PHONES_ENABLED}, IQ_ENABLED=${IQ_ENABLED}"
                     set -x
                     pytest ${PYTEST_ARGS[@]}
+                  }
+
+                  the_command() {
+                    pytest_command
+                  }
+
+                  pytest_on_branch_command() {
+                    if [ $PYTEST_MIGRATIONS_MODE -ne 1 ]
+                    then
+                      echo "Not in migrations mode!"
+                      exit 1
+                    fi
+                    pytest_command --skip-results
+                  }
+
+                  show_migrations() {
+                    if [ "<< parameters.executor >>" == "python" ]
+                    then
+                      # sqlite3 database
+                      set -x
+                      sqlite3 test.sqlite3 "SELECT * FROM django_migrations"
+                    else
+                      # postgres database
+                      local TEST_DATABASE_URL="postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@localhost/test_${POSTGRES_DB}"
+                      set -x
+                      psql ${TEST_DATABASE_URL} --command="SELECT * FROM django_migrations;"
+                    fi
                   }
                   EOF
       - when:
@@ -580,14 +632,22 @@ jobs:
           condition: << parameters.production_with_new_migrations >>
           steps:
             - run:
-                name: Switch to production tag with branch's migrations
+                name: Run tests, keep branch database
+                command: pytest_on_branch_command
+            - run:
+                name: Show latest migrations
+                command: show_migrations
+            - run:
+                name: Switch to production tag
                 command: |
                   echo "# Production tag is ${PROD_TAG}"
                   git fetch --force origin tag ${PROD_TAG}
                   git checkout ${PROD_TAG}
                   git submodule update --init --recursive
-                  git checkout --theirs "${CIRCLE_SHA1}" -- '**/migrations/**'
                   git status
+            - run:
+                name: Install production requirements
+                command: pip install -r requirements.txt
       # Section 5: Update dependency, if selected
       - unless:
           condition:
@@ -610,6 +670,12 @@ jobs:
                 name: Run << parameters.command >> (failure allowed)
                 command: |
                   the_command || echo "*** Command '<< parameters.command >>' failed, but it is allowed to fail. ***"
+      - when:
+          condition: << parameters.production_with_new_migrations >>
+          steps:
+            - run:
+                name: Show migrations after tests
+                command: show_migrations
       # Section 7: Save results
       - unless:
           condition:
