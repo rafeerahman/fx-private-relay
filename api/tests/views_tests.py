@@ -96,9 +96,9 @@ def test_post_domainaddress_success(prem_api_client, premium_user, caplog) -> No
         "name": "generate_mask",
         "extra": {
             "mozilla_accounts_id": premium_user.profile.fxa.uid,
-            "is_random_mask": "False",
-            "created_by_api": "True",
-            "has_generated_for": "False",
+            "is_random_mask": "false",
+            "created_by_api": "true",
+            "has_generated_for": "false",
         },
         "timestamp": event["timestamp"],
     }
@@ -412,9 +412,9 @@ def test_post_relayaddress_success(free_api_client, free_user, caplog) -> None:
         "name": "generate_mask",
         "extra": {
             "mozilla_accounts_id": free_user.profile.fxa.uid,
-            "is_random_mask": "True",
-            "created_by_api": "True",
-            "has_generated_for": "False",
+            "is_random_mask": "true",
+            "created_by_api": "true",
+            "has_generated_for": "false",
         },
         "timestamp": event["timestamp"],
     }
@@ -438,9 +438,9 @@ def test_post_relayaddress_with_generated_for_success(
         "name": "generate_mask",
         "extra": {
             "mozilla_accounts_id": free_user.profile.fxa.uid,
-            "is_random_mask": "True",
-            "created_by_api": "True",
-            "has_generated_for": "True",
+            "is_random_mask": "true",
+            "created_by_api": "true",
+            "has_generated_for": "true",
         },
         "timestamp": event["timestamp"],
     }
