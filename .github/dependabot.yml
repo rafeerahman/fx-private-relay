@@ -50,6 +50,10 @@ updates:
           - "botocore"
           - "botocore-stubs"
           - "mypy-boto3-ses"
+      ipware:
+        patterns:
+          - "django-ipware"
+          - "python-ipware"
       testing-libraries:
         patterns:
           - "coverage"
